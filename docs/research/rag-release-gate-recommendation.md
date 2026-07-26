@@ -1,5 +1,22 @@
 # RAG Assistant Release Gate — Consolidated Portfolio MVP Plan (v2)
 
+> **⚠️ SUPERSEDED — historical record only. Build from [`PLAN.md`](../../PLAN.md) (v4), not from this document.**
+>
+> This doc is kept because its problem framing, corpus design, golden-dataset schema, OWASP mapping, metric vocabulary and portfolio positioning remain the foundation of the project. The following recommendations in it are **no longer the design**:
+>
+> | This doc recommends | v4 decision | Why |
+> |---|---|---|
+> | Chroma with bundled local MiniLM embeddings | **No vector DB.** Hosted `openai/text-embedding-3-small` via OpenRouter → `index.npz` + committed `manifest.json`, NumPy cosine top-k | ~50–80 chunks is firmly brute-force territory; hosted embeddings remove the ONNX/wheel/truncation surface entirely |
+> | Two-tier CI: a free deterministic tier on every push, judged tier key-gated | **Single live release gate, API-key-required.** Unit checks (schemas, corpus metadata, dataset structure, chunker, trust policy, ranking math) run keyless but are **never** presented as a release gate | Citation validity, refusal correctness and adversarial results all require *generated answers*. A keyless "deterministic tier" over a real assistant was not achievable without faking responses |
+> | "Deterministic tier passes with **no** API key" (acceptance checklist) | **Removed as a claim.** The gate is live and costs money | See above |
+> | `gpt-4o-mini` for generation *and* judging | **Cross-family:** candidate `openai/gpt-4o-mini`, judge `anthropic/claude-haiku-4.5`, with a permanent judge-identity assertion | Same-family self-preference bias; and DeepEval's OpenRouter routing can fall back to OpenAI *silently* ([#2626](https://github.com/confident-ai/deepeval/issues/2626), open) |
+> | "Cost per full run (token estimate)" | **Measured** `usage.cost` read inline off each completion | `usage: {include: true}` is deprecated; OpenRouter returns full usage automatically |
+> | Ollama documented as a $0 fallback | **Dropped.** No local model runtime | One provider, one key, one billing surface |
+> | Corpus docs identified by `doc_id` alone | **Explicit trust metadata** on every doc: `document_type`, `status`, `effective_date`, `authority` — surfaced in the prompt and asserted deterministically | Active-vs-archived policy conflict and untrusted-review injection need a *source-of-trust model*, not just an ID |
+> | "Injection resistance" as a metric name | Precise wording only: *a known, versioned adversarial regression suite under a fixed configuration* | The broad claim is not provable and a reviewer can say so |
+>
+> v3's record/replay cassette layer (never in this document) was also proposed and **rejected** — see `PLAN.md` "Corrected premises §1".
+
 *Merged from two independent research passes, 2026-07-24. Research and recommendation only — no code.*
 
 ## TL;DR

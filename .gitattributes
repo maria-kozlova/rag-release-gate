@@ -1,0 +1,13 @@
+# Normalize line endings to LF in the repository.
+#
+# This is not cosmetic. ingest.py records a SHA-256 of each corpus document in
+# data/index/manifest.json. If a file is checked out CRLF on Windows and LF on
+# ubuntu-latest, the same document hashes differently and the manifest check
+# fails in CI for a reason that looks nothing like line endings.
+* text=auto eol=lf
+
+# Binary — never touch these.
+*.npz binary
+*.png binary
+*.jpg binary
+*.ico binary

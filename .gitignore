@@ -1,0 +1,35 @@
+# --- Secrets: never commit ---
+.env
+.env.*
+!.env.example
+*.key
+secrets.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Project build artifacts ---
+# The embedding index is rebuilt by `ingest.py`. The reviewable artifact is
+# data/index/manifest.json, which IS committed. See PLAN.md, corrected premise 3.
+data/index/index.npz
+
+# Generated runs. reports/sample_run/ is committed deliberately; everything
+# else under reports/ is per-run output. See PLAN.md "outputs are never inputs".
+reports/run_*/
+
+# DeepEval scratch output
+.deepeval*
+temp_test_run_data.json
+
+# --- Local tooling / OS ---
+.claude/settings.local.json
+.DS_Store
+Thumbs.db
+desktop.ini
