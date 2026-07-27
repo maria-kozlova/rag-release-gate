@@ -2,6 +2,7 @@
 
 **Source research:** [`docs/research/rag-release-gate-recommendation.md`](docs/research/rag-release-gate-recommendation.md) (2026-07-24) — *superseded in several places; see "Corrected premises."*
 **Supersedes:** v2 (19 tickets) and v3 (20 tickets, two-tier + cassettes). This is **v4 — 22 tickets, single live architecture, no replay layer.**
+**T01 corrections applied 2026-07-26** — premises 4 and 4b, T02/T05/T15 and the risk table now state what was *measured*, not what was assumed. Evidence: [`spike/FINDINGS.md`](spike/FINDINGS.md).
 **Repo:** this repo, at root.
 **Mode:** multi-week evenings · Claude writes, you study the diff · OpenRouter · Python 3.12 + `uv` · Windows host, `ubuntu-latest` CI
 
@@ -45,6 +46,8 @@ What we keep for free: genuine unit tests over pure logic — Pydantic schemas, 
 
 **Pin `openai/text-embedding-3-small`.** Cheapest of the verified options, 8K context (so chunk-size truncation stops being a design constraint), and the ID is stable enough to log as evidence.
 
+**T01 confirmed against the live endpoint:** **1536 dimensions**, and the response carries `usage.cost`, `cost_details` and a `gen-emb-...` generation ID — so embedding cost is measured, not estimated. See the prefix trap in T05.
+
 ### 3. Chroma is not needed — persisted vectors + NumPy cosine is simpler and more transparent
 
 The corpus is 8 documents + a product catalog → roughly **50–80 chunks**. At that size a vector database is pure ceremony:
@@ -59,49 +62,80 @@ The corpus is 8 documents + a product catalog → roughly **50–80 chunks**. At
 
 *(Stretch T23 keeps a `rank_bm25` A/B. Comparing retrievers is a stronger signal than picking one — and now the comparison is 20 lines instead of a second storage engine.)*
 
-### 4. DeepEval + OpenRouter is still broken, and a paid key does not fix it ⚠️
+### 4. DeepEval + OpenRouter routes correctly on 4.1.3 — measured in T01 ✅
 
-**A paid OpenRouter key does not make this go away.** This is a *routing* defect inside DeepEval, not an entitlement problem. Verified as of this writing:
+**This premise was rewritten on 2026-07-26 from evidence.** v4 was drafted against `deepeval` 4.0.x, where OpenRouter routing was a silent-fallback defect. On the pinned version that defect is gone. *Why it mattered* has not changed, and the guard it justified stays exactly as it was.
 
-- [confident-ai/deepeval#2626](https://github.com/confident-ai/deepeval/issues/2626) is **open**, filed 2026-04-22, **no maintainer response**. `OpenRouterModel` exists in `deepeval.models` (added by [PR #2314](https://github.com/confident-ai/deepeval/pull/2314)) and there is a `deepeval set-openrouter` CLI — **but the class is not wired into `is_native_model()` or `initialize_model()`**. Metrics therefore set `using_native_model = False` and take an unexpected path, or fall back to OpenAI defaults.
-- The documented workaround in that thread is to *disguise the OpenRouter key as `OPENAI_API_KEY`* — which defeats the CLI and makes the configured judge unverifiable.
-- The failure mode is **silent**. Your judge quietly becomes an OpenAI model judging an OpenAI candidate: the exact same-family self-preference bias this project claims to have eliminated, reintroduced invisibly, while `EVALUATION.md` asserts a cross-family judge and the scorecard prints a judge name that was never called. Every number stays plausible. Nothing turns red.
+**What T01 measured** (`spike/FINDINGS.md`, `deepeval==4.1.3`):
 
-That is a false claim in a portfolio piece, told confidently, and it is the kind a sharp interviewer finds by asking one question.
+- `OpenRouterModel` **is** wired into both `is_native_model()` and `initialize_model()`. It is a `DeepEvalOpenAICompatibleModel` subclass that reads `OPENROUTER_API_KEY` and defaults `base_url` to `https://openrouter.ai/api/v1`.
+- A `FaithfulnessMetric` judged by `anthropic/claude-haiku-4.5` returned a correct score and made **4 judge calls** — truths, claims, verdicts, reason. **All four were attributed to `anthropic/claude-4.5-haiku-20251001`, served by Amazon Bedrock, in OpenRouter's own generation records.** No OpenAI model appears anywhere in the judge path.
+- The run executed with `OPENAI_API_KEY` set to a deliberately invalid value as a **negative control**. It still scored — so nothing fell back to an OpenAI default.
+- The custom `DeepEvalBaseLLM` adapter was proven on the same case: identical score, identical per-call costs.
 
-**Verified alternatives (from current official docs):**
+**Keep the paranoia, drop the workaround.** The failure mode #2626 described is **silent**: the judge quietly becomes an OpenAI model judging an OpenAI candidate — the exact same-family self-preference bias this project claims to have eliminated, reintroduced invisibly, while `EVALUATION.md` asserts a cross-family judge and the scorecard prints a judge name that was never called. Every number stays plausible. Nothing turns red.
 
-| Path | What the docs actually say |
+**A dependency bump can reintroduce that at any time, and T01's evidence expires the moment the lockfile changes.** That is precisely why the T15 judge-identity assertion is permanent rather than a one-time spike check. A false claim in a portfolio piece, told confidently, is the kind a sharp interviewer finds by asking one question — and the guard, not the version pin, is what prevents it.
+
+**The three paths, as measured in T01 — not as documented:**
+
+| Path | Result |
 |---|---|
-| `deepeval set-openrouter` / `OpenRouterModel` | Class exists; routing integration is the open bug. **Unverified — test first, trust nothing.** |
-| LiteLLM integration | `deepeval set-litellm --model=<provider/model> --base-url=<url> [--save]`; Python: `from deepeval.models import LiteLLMModel`, args `model`, `api_key`, `base_url`, `temperature`, `cost_per_input_token`, `cost_per_output_token`, `generation_kwargs`. **The flag is `--base-url`, not `--api-base`** (v3 had this wrong). OpenRouter is not mentioned on that page. |
-| Custom `DeepEvalBaseLLM` | Fully documented extension point. Implement `get_model_name()`, `load_model()`, `generate(prompt, schema: BaseModel \| None = None)`, `a_generate(...)`. **When `schema` is supplied the method must return an instance of that Pydantic schema** — without it, `FaithfulnessMetric` and friends fail with `AttributeError`. |
+| `OpenRouterModel` (native) | **PROVEN.** `using_native_model = True`, correct score, all 4 judge calls confirmed as Haiku in the provider's records. Framework reports an aggregate `evaluation_cost` that **exactly matched** the sum of the four measured `usage.cost` values. |
+| LiteLLM integration | **Never needed.** Not installed, not tested. `litellm` stays out of the dependency tree. |
+| Custom `DeepEvalBaseLLM` | **PROVEN.** Identical score and identical per-call costs. `using_native_model = False`, so the framework accrues no cost — `evaluation_cost` is `None` and you compute the total from your own records. `generate(prompt, schema)` returning a schema instance works exactly as documented. |
 
-**Recommended fallback: the custom `DeepEvalBaseLLM` adapter.** Not a hand-rolled judge. Reasons:
+**Decision: the custom `DeepEvalBaseLLM` adapter — but for one reason only, and it is no longer "the native path is broken."**
+
+The native path routes correctly. What it does **not** do is surface per-call provenance: metric-driven judge calls go through `generate_with_schema()`, which returns `(result, cost)` and nothing else. **No `generation_id`, no `provider`, no per-call breakdown** — those live on the raw completion, inside the framework. T01 could only see them by monkey-patching the OpenAI SDK, which is a legitimate spike technique and not something that belongs in `src/`.
+
+This project's hard rule is *"every model call gets its own `CallRecord` with its own `generation_id`."* Under the native path, honouring that rule requires intercepting below DeepEval. Under the adapter, it is free — you own the client, so every judge request yields a requested slug, a reported model, a provider, a generation ID and a measured cost as a matter of course.
+
+So the adapter's other advantages still hold and are now the whole argument:
 
 1. **It keeps the metric definitions.** DeepEval's value here is Faithfulness's claim-extraction-then-verdict decomposition and Answer Relevancy's statement decomposition. Writing your own judge means also writing your own faithfulness rubric — more work, and a much weaker thing to defend in an interview than "I used the framework's RAG triad and supplied my own model transport."
-2. **It is ~40 lines against a documented, supported interface** — not a speculative one.
-3. **It puts the judge calls where you can observe them at all.** You own the client, so every judge request becomes a `CallRecord` with a requested slug, a reported model, a generation ID and a cost. Under the native/LiteLLM paths those values are buried inside the framework. **The fallback is not a downgrade for the project's central claim — it is an upgrade.**
+2. **It is ~40 lines against a documented, supported interface** — and T01 has now run those 40 lines end to end.
+3. **It puts the judge calls where you can observe them.** That is the CallRecord requirement, satisfied by construction rather than by patching.
 
-Only if the adapter itself somehow fails does the 4th option apply: a direct structured-output judge over the OpenRouter client, accepting that you lose the framework's metric definitions and must document the rubric yourself. **Say so if you go there.**
+**The cost consequence is a real trade and T15 must handle it:** the adapter gets no `evaluation_cost` from the framework. The run's judge cost is the sum of your own `CallRecord.cost_usd` values. That is arguably better — it is measured, per-call and per-role — but a `None` from DeepEval must never be recorded as `0`.
 
-**But be careful what you claim the reported model proves.** Recording `model_reported` off the completion is necessary evidence and it is not, on its own, established proof of the full routing chain. Until T01 determines empirically what that field actually represents on OpenRouter — whether it echoes the requested slug verbatim regardless of what served the request, or reflects the model and upstream provider that actually ran it — the honest position is:
+**Fallback if the adapter ever fails:** the native `OpenRouterModel`, accepting aggregate-only cost and adding an interception layer for provenance. The hand-rolled-judge option is now the fourth choice, not the second, and taking it means documenting your own rubric. **Say so if you go there.**
 
-> The runtime assertion checks that **the model identity the provider reported for every judge call matches the configured judge**. Its strength as evidence depends on what that field represents; T01 establishes that, and `EVALUATION.md` states the finding and calibrates the claim to it.
+### 4b. What the reported `model` field means — SETTLED by T01 ✅
 
-If T01 shows the field is a verbatim echo of the request, it is a **configuration guard** — it catches DeepEval silently swapping in an OpenAI default, which is the failure mode this project actually faces — but it is *not* proof of which upstream model served the tokens, and `EVALUATION.md` must say so. In that case `generation_id` plus periodic activity-log spot-checks carry the rest of the claim, and the hand verification in T15 stops being a one-time nicety and becomes the documented mechanism for the part the assertion can't reach. **Do not write "the trace proves the judge was Anthropic" until you know which of these two worlds you are in.**
+v4 asked which of two worlds we were in. The answer, recorded verbatim in `spike/FINDINGS.md`:
 
-**Practical decision rule for T01 — this must not block the project indefinitely:**
+> **On OpenRouter, the `model` field on a chat completion is not a verbatim echo of the requested slug: it reports the model that actually served the request, normalized to an undated OpenRouter slug. A routing alias resolves to a concrete model in the echo, and a routing-variant suffix is stripped.**
 
-> Timebox **2.5 hours**. Try in order: (1) `set-openrouter`, (2) `LiteLLMModel` with `base_url`, (3) custom `DeepEvalBaseLLM`. **Stop at the first one you can prove.** If none of the three is proven inside the timebox, **stop and commit to path (3) as the design**, write the adapter in T15, and record in `LEARNING-LOG.md` what you observed. Do not spend a second evening on it. Path (3) depends on nothing but the documented base class and your own OpenRouter client, so it is under your control by construction.
+The experiment: `openrouter/auto` — an alias that cannot serve tokens itself — echoed back **`openai/gpt-5.6-sol`**, and `openai/gpt-4o-mini:floor` echoed back `openai/gpt-4o-mini`. A verbatim-echo field would have returned what was sent. It did not.
 
-**On structured output:** OpenRouter documents `response_format` with JSON Schema for compatible models. Try that first inside the adapter. Add `instructor` **only** if a pinned model's JSON compliance actually proves unreliable — do not add a dependency on speculation. *Which of the pinned models supports `response_format: json_schema` on OpenRouter is an open question T01 must answer.*
+**This is world (ii), so the T15 assertion is entitled to be stronger than v4's cautious fallback wording — with one caveat that changes how it must be written.** There are three identity surfaces and they are **not string-equal**:
+
+| Surface | Value for a judge call | Use |
+|---|---|---|
+| requested slug (`config.py`) | `anthropic/claude-haiku-4.5` | what we asked for |
+| response `model` | `anthropic/claude-haiku-4.5` | resolved, **undated** — assert on this |
+| response `provider` (top-level) | `Amazon Bedrock` | names the upstream — **record it** |
+| generation record `model` | `anthropic/claude-4.5-haiku-20251001` | canonical, **dated, different word order** |
+
+Rules that follow, and `EVALUATION.md` states them:
+
+- `model_reported == model_requested` is a **valid runtime assertion** for concretely-pinned slugs, and it is **routing evidence, not merely a configuration guard** — the field resolves, so a substitution changes it.
+- It still does **not** establish the dated model version or the upstream provider. `generation_id` + `provider` + periodic activity-log spot-checks carry that remainder.
+- **Never assert string equality against the generation record.** `anthropic/claude-haiku-4.5` != `anthropic/claude-4.5-haiku-20251001`; a correct system would fail that test. Family/substring check plus the recorded exact value.
+- **`EVALUATION.md` names Amazon Bedrock**, because a reviewer opening the activity log will see it and should not be surprised that an Anthropic model was served by AWS.
+
+**On structured output — ANSWERED.** `response_format` with a JSON Schema **works on both pinned chat models**; T01 validated the returned content against a Pydantic model on each. **`judge.py` does not need `instructor`, and T02 does not add it.** Revisit only if a pinned model's compliance actually degrades — not on speculation.
 
 ### 5. Cost is inline — no `/api/v1/generation` round-trip
 
 `usage: {include: true}` and `stream_options: {include_usage: true}` are **deprecated and have no effect**. OpenRouter now returns full usage on every completion automatically: `prompt_tokens`, `completion_tokens`, `total_tokens`, `prompt_tokens_details` (incl. cached tokens), `completion_tokens_details` (incl. reasoning tokens), **`cost`**, and `cost_details.upstream_inference_cost`.
 
 `openrouter.py` reads `response.usage.cost` off the completion and moves on — no second HTTP call, no exposure to the generation endpoint's indexing lag. **The cost gate asserts on measured dollars, not a token estimate.**
+
+**T01 confirmed** inline `cost` and `cost_details.upstream_inference_cost` on chat *and* embeddings, and found the top-level **`provider`** field (e.g. `Azure`, `Amazon Bedrock`) that the OpenAI SDK does not type — reachable via `usage.model_dump()` / `model_extra`. It also found a reconciliation trap: **the response's `prompt_tokens` is the provider's native count, while the generation record's `tokens_prompt` is OpenRouter's normalized GPT-tokenizer count** (493 vs 304 on the same call). Costs agree exactly; token counts do not. **Reconcile on cost, never on tokens.**
+
+*(T01 used `GET /api/v1/generation` as an out-of-band verification oracle for the spike only. It stays out of the runtime path — the premise above is unchanged.)*
 
 *(v3 also claimed a `cache_discount` field. It is not in the current usage-accounting docs. Do not code against it.)*
 
@@ -268,7 +302,8 @@ Every model call is therefore recorded as its own `CallRecord`:
 role:               candidate | judge | embedding
 metric:             str | null          # which metric this judge call served
 model_requested:    str                 # the slug from config.py
-model_reported:     str | null          # what the provider reported serving
+model_reported:     str | null          # resolved serving model, undated (T01: not a verbatim echo)
+provider:           str | null          # upstream that ran it, e.g. "Amazon Bedrock"
 generation_id:      str | null
 tokens_in/out:      int | null
 cost_usd:           float | null        # measured usage.cost; null if absent
@@ -431,7 +466,8 @@ Highest-leverage artifact in the project — it makes every future session start
 - **"Never add a code path that fabricates, estimates, or caches a model response. If there is no key, live tests fail loudly — they do not degrade."**
 - **"Never use `pull_request_target` in any workflow, and never check out a fork ref (`refs/pull/*`, or any ref from `github.event`) in a job that has access to `OPENROUTER_API_KEY`. External fork code and the secret never occupy the same job."**
 - **"If `usage.cost`, `model`, a generation ID or token counts are absent from a provider response, record `null`. Never substitute a token-based estimate, never label an estimate as measured, and never fail an otherwise successful call — including ingestion — because provider metadata was missing."**
-- **"Every model call gets its own `CallRecord` with its own `role`, `model_requested`, `model_reported` and `generation_id`. Never collapse candidate and judge calls into a shared ID or a single summary field."**
+- **"Every model call gets its own `CallRecord` with its own `role`, `model_requested`, `model_reported`, `provider` and `generation_id`. Never collapse candidate and judge calls into a shared ID or a single summary field."**
+- **"Never compare a model identity by string equality against an OpenRouter generation record — `anthropic/claude-haiku-4.5` and `anthropic/claude-4.5-haiku-20251001` are the same model. Assert on the response's `model` field; record the rest."**
 - **"Never weaken the fixture-reachability assertions. A case whose adversarial fixture was not retrieved must fail, not pass."**
 - "Live tests are `@pytest.mark.live`, deselected by default."
 - **"Model IDs, prompt version and thresholds live in `config.py` and `EVALUATION.md`. Never inline a model ID at a call site."**
@@ -483,7 +519,7 @@ Highest-leverage artifact in the project — it makes every future session start
 │   ├── retrieval.py                  ← NumPy cosine top-k
 │   ├── assistant.py                  ← trust-annotated context → answer → AnswerResult
 │   ├── runner.py                     ← ONE generation pass → RunArtifact; budget + infra guard
-│   ├── judge.py                      ← DeepEvalBaseLLM adapter (or verified native path)
+│   ├── judge.py                      ← DeepEvalBaseLLM adapter (T01-proven; native = fallback)
 │   ├── report.py                     ← scorecard.md + traces.jsonl + run_meta.json
 │   └── cli.py                        ← ask · ingest · evaluate · report
 ├── tests/
@@ -515,6 +551,8 @@ Highest-leverage artifact in the project — it makes every future session start
 
 Nothing downstream is safe until this is answered. Throwaway code in `spike/`, not `src/`. **This is a decision-making ticket, not a building ticket.**
 
+> **DONE — 2026-07-26. All five gates passed inside the timebox for ~$0.011.** Findings verbatim in [`spike/FINDINGS.md`](spike/FINDINGS.md); premises 4 and 4b above were rewritten from the results, and T02 / T05 / T15 / the risk table updated. Paths (a) *and* (c) both proven; (b) never needed. Probes kept: `probe1_chat` · `probe2_routing` · `probe3_embeddings` · `probe4_structured` · `probe5_deepeval` · `probe6_verify` (generation-record cross-check).
+
 - **Learning brief:** what an OpenAI-compatible endpoint is and why `base_url` swapping works; what "structured output" means and why eval frameworks depend on it; why a printed score is not evidence that a specific model was called.
 - **Build — four probes:**
   1. `openai` SDK against `https://openrouter.ai/api/v1`, one chat call to `openai/gpt-4o-mini`. Print `usage.cost`, `usage.cost_details`, the generation ID, and the `model` field the response echoes.
@@ -539,7 +577,7 @@ Nothing downstream is safe until this is answered. Throwaway code in `spike/`, n
 
 #### T02 · Scaffold, toolchain, CLAUDE.md · 2h
 - **Learning brief:** `uv` vs pip/venv (the npm analogy); what `uv.lock` guarantees; `pyproject.toml` as `package.json`.
-- **Build:** `uv init` at repo root, Python 3.12 pinned via `.python-version`. Deps: `pydantic`, `openai`, `numpy`, `python-frontmatter`, `deepeval` (+ `litellm` only if T01 proved that path), `pytest`, `ruff`, `python-dotenv`. **No `chromadb`, no `onnxruntime`, no `sentence-transformers`.** `ruff` + pytest config with `addopts = -m "not live"` and a registered `live` marker. `Makefile`, `tasks.ps1`, `.env.example`, `.gitignore` (incl. `data/index/index.npz`), `config.py` with the three pinned model IDs, `CLAUDE.md` (all rules from Part 0), both empty CI workflow files.
+- **Build:** `uv init` at repo root, Python 3.12 pinned via `.python-version`. Deps: `pydantic`, `openai`, `numpy`, `python-frontmatter`, **`deepeval==4.1.3`**, `pytest`, `ruff`, `python-dotenv`. **No `chromadb`, no `onnxruntime`, no `sentence-transformers`, no `litellm` (T01 never needed it), no `instructor` (T01 proved both pinned models honour `response_format` JSON Schema).** T01's working set: `python 3.12.13` · `uv 0.11.32` · `openai 2.48.0` · `deepeval 4.1.3` · `pydantic 2.13.4`. `ruff` + pytest config with `addopts = -m "not live"` and a registered `live` marker. `Makefile`, `tasks.ps1`, `.env.example`, `.gitignore` (incl. `data/index/index.npz`), `config.py` with the three pinned model IDs, `CLAUDE.md` (all rules from Part 0), both empty CI workflow files.
 - **Gate:** `uv run pytest` green on one trivial test · `uv run ruff check .` clean · `python --version` = 3.12.x · `unit.yml` green on push · `CLAUDE.md` contains the threshold rule, the outputs-only rule, the no-fabrication rule and the no-`pull_request_target` rule **verbatim** · `pip list` shows no `onnxruntime`.
 - **Checkpoint:** What would break if you deleted `uv.lock` and re-synced?
 
@@ -550,7 +588,7 @@ Nothing downstream is safe until this is answered. Throwaway code in `spike/`, n
   - `Chunk` (chunk_id, doc_id, heading, text, inherited trust metadata)
   - `RetrievedChunk` (Chunk + score + rank)
   - `GoldenCase` (id, category `Literal`, question, expected_behavior, reference_answer, expected_doc_ids, must_include, must_not_include, must_retrieve_doc_ids, max_latency_ms, notes)
-  - `CallRecord` (role `Literal["candidate","judge","embedding"]`, metric, model_requested, model_reported, generation_id, tokens_in/out, cost_usd, latency_ms, outcome_class) — **every nullable field genuinely `| None`**
+  - `CallRecord` (role `Literal["candidate","judge","embedding"]`, metric, model_requested, model_reported, **provider**, generation_id, tokens_in/out, cost_usd, latency_ms, outcome_class) — **every nullable field genuinely `| None`**
   - `AnswerResult` (answer, citations, retrieved chunks, retrieved_context_sha256, refused, outcome_class, latency_ms, `candidate_calls: list[CallRecord]`)
   - `CaseTrace` (adds `judge_calls: list[CallRecord]`) and `RunArtifact` (adds `embedding_calls`) — the full evidence record from the traceability section above.
   JSONL round-tripping helpers.
@@ -581,7 +619,9 @@ First genuinely new concept. Take your time.
 
 - **Learning brief:** what an embedding *is* (text → vector, semantic distance); cosine similarity and why L2-normalizing lets you replace it with a dot product; why chunking matters; why a build artifact needs a manifest.
 - **Build:** `ingest.py` — walk `data/corpus/`, parse front-matter, chunk markdown by heading (~300 tokens; the 8K-context embedding model means truncation is no longer a design constraint), batch-embed via `POST /api/v1/embeddings` with `openai/text-embedding-3-small`, L2-normalize, write `index.npz` (float32 matrix + parallel chunk metadata) and `manifest.json` (embedding model ID, vector dim, chunk count, per-doc content SHA-256, chunker version, UTC timestamp). Idempotent: re-running on an unchanged corpus is a no-op that says so.
-- **Cost reporting is not a success condition.** The embeddings endpoint documents request and response shape but does not document a cost field, and T01 probe 3 settles whether one is returned. Handle it as data, not as an error: if cost is present, record it; **if it is absent, record `null` and print `embedding cost: not reported by provider`.** A successful ingestion that produced a valid index must **never** fail because a cost field was missing. The same rule applies to `model_reported`, `generation_id` and token counts. *Provider metadata is evidence we collect opportunistically; the index is the deliverable.*
+- **T01 settled this: the embeddings endpoint DOES report cost.** `usage.cost` (`2e-07` for a 10-token input), `cost_details`, and a `gen-emb-...` generation ID. Ingest reports **measured** embedding cost; the not-reported branch is now the unlikely path rather than the expected one.
+- **Trap T01 found — the echoed model has no vendor prefix.** Requesting `openai/text-embedding-3-small` echoes back **`text-embedding-3-small`**, unlike chat, which echoes the full slug. `model_reported == model_requested` **would fail here on a correct system.** Compare with the prefix stripped, or just record the value.
+- **Cost reporting is still not a success condition.** Handle it as data, not as an error: if cost is present, record it; **if it is absent, record `null` and print `embedding cost: not reported by provider`.** A successful ingestion that produced a valid index must **never** fail because a cost field was missing. The same rule applies to `model_reported`, `generation_id` and token counts. *Provider metadata is evidence we collect opportunistically; the index is the deliverable.*
 - **Gate:** `uv run python -m rag_release_gate.ingest` builds the index and prints either the **measured** embedding cost or the explicit not-reported line · re-running without corpus changes makes **zero** API calls and exits clean · editing one doc re-embeds and the manifest hash for that doc changes · **simulate a cost-free embeddings response and confirm ingest still succeeds, writes a valid index, and records `cost_usd: null`** — not a zero, not an estimate, not a failure · `tests/unit/test_chunking.py` green with no key (chunker is pure) · `tests/unit/test_manifest.py` — manifest schema valid and doc hashes match the files on disk.
 - **Checkpoint:** Why is the manifest committed but the `.npz` gitignored? And why is "the provider didn't report a cost" a logging outcome rather than an ingest failure — what would the opposite choice cost you on the day the API changes?
 - **Cost:** < $0.01
@@ -663,12 +703,13 @@ The architectural heart of v4. Get this right and T13–T15 are assertions over 
 
 #### T15 · Live judged gate — DeepEval triad + judge identity · 2.5h · 🎓
 - **Learning brief:** LLM-as-judge — what it can and can't measure; the **RAG triad** (Faithfulness = grounded in the retrieved context; Answer Relevancy = actually answers the question; Contextual Relevancy = retrieval brought the right context); **self-preference bias** and why a cross-family judge is the mitigation; `strict_mode` and temperature 0; why even temp-0 isn't deterministic.
-- **Build:** `judge.py` on **the path T01 proved** — most likely the custom `DeepEvalBaseLLM` adapter (`get_model_name`, `load_model`, `generate(prompt, schema)`, `a_generate(prompt, schema)`, returning a `schema` instance when one is supplied, via OpenRouter `response_format` JSON Schema). `tests/live/test_live_judged.py` scores the **fresh answers from the session `RunArtifact`** — never stored answers. Judged scope is the **answer-expected cases** (refusals have no reference answer; Faithfulness on a refusal is meaningless — this is a principled scope, not a budget trick, and `EVALUATION.md` says so). Thresholds: Faithfulness mean ≥ 0.8 / no case < 0.5; Answer Relevancy ≥ 0.8; Contextual Relevancy ≥ 0.7. Judge pinned to `anthropic/claude-haiku-4.5`, temp 0, `strict_mode` on Faithfulness. Per-case scores and reasons into the artifact.
+- **Build:** `judge.py` as the custom `DeepEvalBaseLLM` adapter **T01 proved end to end** (`get_model_name`, `load_model`, `generate(prompt, schema)`, `a_generate(prompt, schema)`, returning a `schema` instance when one is supplied, via OpenRouter `response_format` JSON Schema). Two things T01 learned the hard way: **judge cost comes from your own `CallRecord`s, not the framework** — on the non-native path `metric.evaluation_cost` is `None`, and `None` is recorded as `null`, never `0`; and **DeepEval's schema path is async even when `async_mode=False`**, so any instrumentation must cover the async client or it will silently observe nothing. **Expect 4 judge calls per Faithfulness metric per case** (truths · claims · verdicts · reason) — use that to sanity-check `len(judge_calls)`. `tests/live/test_live_judged.py` scores the **fresh answers from the session `RunArtifact`** — never stored answers. Judged scope is the **answer-expected cases** (refusals have no reference answer; Faithfulness on a refusal is meaningless — this is a principled scope, not a budget trick, and `EVALUATION.md` says so). Thresholds: Faithfulness mean ≥ 0.8 / no case < 0.5; Answer Relevancy ≥ 0.8; Contextual Relevancy ≥ 0.7. Judge pinned to `anthropic/claude-haiku-4.5`, temp 0, `strict_mode` on Faithfulness. Per-case scores and reasons into the artifact.
 - **Plus — the permanent judge-identity assertion.** A test over **`judge_calls`, per call, not over a summary**: every judge `CallRecord` must have `model_reported` matching the configured judge, and **a case with zero judge calls fails rather than passing vacuously**. A partial fallback — 2 of 12 calls landing on an OpenAI default — must go red, which a single aggregate check would miss. This is the standing guard against DeepEval's silent fallback: without it, a dependency bump quietly turns your headline claim into a false statement and nothing goes red. **A printed evaluation score is not proof that the intended judge was called.**
-- **And be exact about what it proves.** Write the claim in `EVALUATION.md` calibrated to T01's finding about what the reported `model` field represents:
-  - If T01 showed it reflects the model that actually served the request → the assertion is routing evidence, and you may say so.
-  - If T01 showed it is a verbatim echo of the request → **the assertion is a configuration guard**: it catches the framework silently substituting a different configured model, which *is* the failure mode this project faces, but it does not establish which upstream model produced the tokens. Say exactly that, and carry the remainder with `generation_id` plus the documented activity-log spot-check.
-  - Either way: **do not write "the trace proves the judge was Anthropic" unless T01 earned that sentence.** An overclaim here is worse than no claim, because this is the one assertion the whole cross-family story rests on.
+- **And be exact about what it proves — T01 settled this (premise 4b).** The response `model` field **resolves to the model that served the request**, so the assertion is **routing evidence**, not merely a configuration guard, and `EVALUATION.md` may say so. What it still does **not** establish: the dated model version, and the upstream provider. Therefore:
+  - Assert `model_reported == model_requested` per judge call. Record `provider` and `generation_id` alongside; they carry the remainder.
+  - **Never** string-compare against a generation record — `anthropic/claude-haiku-4.5` and `anthropic/claude-4.5-haiku-20251001` are the same model, and equality there would fail on a correct system.
+  - Name **Amazon Bedrock** in `EVALUATION.md` as the observed upstream for the judge, so a reviewer opening the activity log is not surprised.
+  - The sentence you have earned is *"every judge call was routed to and served by the configured Anthropic model, per the provider's reported identity and its own generation records"* — **not** "the trace proves the judge was Anthropic" in the abstract. An overclaim here is worse than no claim, because this is the one assertion the whole cross-family story rests on.
 - **Gate:** all answer-expected cases scored on 3 metrics · **judge-identity test green AND verified by hand against the OpenRouter activity log**, with the number of judge calls in the log matching `len(judge_calls)` in the artifact (a mismatch means calls are escaping your instrumentation — investigate before proceeding) · run cost logged and reconciled against the dashboard within 10%, **per role** · **deliberately misconfigure the judge to an OpenAI model and confirm the identity test goes red** · **stub one of several judge calls to report a different model and confirm the test still goes red** — the partial-fallback case is the one worth proving · then revert · `EVALUATION.md` states the calibrated claim, not the maximal one.
 - **Checkpoint:** All three judged means are 0.92 but the assistant just quoted the archived 14-day policy. Does the judged gate pass? What does that tell you about the relationship between your judged and deterministic tiers?
 - **Cost:** ~$1.50 (see cost table — this is the expensive ticket)
@@ -835,15 +876,15 @@ Run from a **fresh clone** when you think you're done. This is the reviewer's pa
 
 | Risk | Mitigation |
 |---|---|
-| **DeepEval silently judges with an OpenAI model** (#1) | T01 proves routing via the activity log, not a printed score. T15 makes it a **permanent test** on the echoed `model` field. Recommended path — the custom `DeepEvalBaseLLM` adapter — makes the assertion strongest because you own the client. Issue [#2626](https://github.com/confident-ai/deepeval/issues/2626) is open with no maintainer response; assume it stays broken. |
-| **T01 becomes an open-ended rabbit hole** | Hard 2.5h timebox with a pre-committed default (the adapter). The adapter depends only on the documented base class and your own client, so it cannot be blocked by an upstream bug. |
+| **DeepEval silently judges with an OpenAI model** (#1) | **Not currently occurring:** T01 proved correct routing on `deepeval==4.1.3` via the provider's own generation records plus a poisoned-`OPENAI_API_KEY` negative control — not via a printed score. **The residual risk is regression on a dependency bump**, which is why T15's identity check is a permanent per-call test rather than a one-time spike result. The custom `DeepEvalBaseLLM` adapter keeps the assertion strongest because you own the client. [#2626](https://github.com/confident-ai/deepeval/issues/2626) remains open but describes 4.0.x. |
+| ~~**T01 becomes an open-ended rabbit hole**~~ | **Closed 2026-07-26.** Finished inside the 2.5h timebox for ~$0.011; paths (a) and (c) both proven. |
 | **Adversarial fixtures never retrieved → inert categories pass green** | Reachability asserted twice: at retrieval config time (T06) **and per case on every live run** (T13/T14). A missing fixture **fails** the case. T14's gate requires you to *watch* it fail. |
 | **Judge nondeterminism → flaky gate** | Cross-family pinned judge, temp 0, `strict_mode`, gate on means not single cases. T16 measures variance across 3 runs and derives thresholds at 3× stdev. Judged gate stays **manual/scheduled** until variance justifies promotion. |
 | **Provider outage read as a quality failure** | `outcome_class` per case; > 10% non-`ok` → `INFRA_FAILURE` exit code and "run invalid — not scored" in CI. **Thresholds are never lowered to absorb flakiness.** |
 | **Live cost overrun against the $10 wall** | In-code `--max-cost-usd` abort; `--scope smoke` for dev loops; judged scope limited to answer-expected cases on principle; documented cheaper-judge lever with its calibration cost stated. Reconcile against the dashboard weekly. |
 | **Secret leakage via CI — external fork code running alongside the key** | Structural, not attentional: `unit.yml` references no secrets at all; `release-gate.yml` never triggers on `pull_request`/`pull_request_target` and checks out **only upstream refs**. Grep-enforced in T19's gate for both `pull_request_target` and `refs/pull`. A fork contribution earns a live run by becoming upstream code. **Diff review is explicitly not treated as the control.** |
 | **Judge routing partially fails and is averaged away** | Per-call `CallRecord`s, not a summary. The identity assertion runs over every entry in `judge_calls`; zero judge calls fails as vacuous; T15's gate requires proving the *partial*-fallback case goes red. |
-| **Overclaiming what the reported model field proves** | T01 probe 2 establishes what the field actually represents before any claim is written. `EVALUATION.md` states the calibrated claim; if the field is a verbatim echo it is described as a **configuration guard**, with `generation_id` + activity-log spot-checks carrying the rest. |
+| **Overclaiming what the reported model field proves** | Settled by T01 probe 2 **before** any claim was written: the field **resolves** to the serving model rather than echoing the request, so it is routing evidence — but it is undated and provider-blind, so `generation_id` + `provider` + activity-log spot-checks carry the remainder. `EVALUATION.md` states that calibrated claim and names Amazon Bedrock. |
 | **Missing provider metadata breaks a working pipeline** | Every provider-supplied field is nullable by type. Absent cost/model/token data is recorded as `null` and surfaced as "not reported by provider" — never an estimate, never a zero, and never a failure of an otherwise successful ingest or call. T05 and T07 gates both require proving this. |
 | **Overclaiming in the README** | Banned-phrase grep in T21's gate. Precise adversarial-suite wording mandated. The three exact cost sentences. Fresh-session positioning test. |
 | **Corpus sprawl** | T04 hard-timeboxed, frozen at 14 products + 8 docs. Non-goals in README as guardrail. |
@@ -860,4 +901,6 @@ Run from a **fresh clone** when you think you're done. This is the reviewer's pa
 2. ✅ `docs/research/rag-release-gate-recommendation.md` carries a supersession banner mapping each of its now-obsolete recommendations to the v4 decision. It stays as the historical record — the framing, corpus design, dataset schema and positioning in it are still the foundation.
 3. Commit both, one commit.
 
-Then **you** start T01 in a fresh context. Do not start T02 until T01's timebox has closed **and you have written down which judge path you are committing to.** Every other week depends on that answer.
+**T01 is closed (2026-07-26).** The judge path is committed: the custom `DeepEvalBaseLLM` adapter, chosen for per-call provenance rather than because the native path failed. Evidence in [`spike/FINDINGS.md`](spike/FINDINGS.md); premises 4 and 4b, T02, T05, T15 and the risk table were rewritten from it on 2026-07-27.
+
+Next: **T02 in a fresh context.**
