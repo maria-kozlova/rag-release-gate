@@ -59,6 +59,14 @@ CHUNKER_VERSION: Final = "v1"
 SYSTEM_PROMPT_VERSION: Final = "unset-until-t08"
 
 # --------------------------------------------------------------------------
+# Suite — the golden dataset is a versioned artifact. An adversarial result is
+# only meaningful next to the suite version that produced it, which is why the
+# run artifact records this and the scorecard prints it. T11 sets the real one.
+# --------------------------------------------------------------------------
+
+SUITE_VERSION: Final = "unset-until-t11"
+
+# --------------------------------------------------------------------------
 # Live-deterministic gate thresholds (T13, T14)
 # --------------------------------------------------------------------------
 
