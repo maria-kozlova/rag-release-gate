@@ -19,6 +19,7 @@ from typing import Any
 
 import frontmatter
 import pytest
+from pydantic import ValidationError
 
 from rag_release_gate.models import CorpusDoc, ProductCatalog
 
@@ -72,7 +73,9 @@ def _catalog() -> ProductCatalog:
 def test_every_markdown_doc_has_exactly_the_five_front_matter_keys() -> None:
     """Exactly five, not at least five. `CorpusDoc` is `extra="forbid"`, so a
     sixth key would fail validation at ingest — this fails it at review time."""
-    for path in _markdown_docs():
+    docs = _markdown_docs()
+    assert docs, "no markdown docs found — this loop would otherwise pass on nothing"
+    for path in docs:
         assert set(_front_matter(path)) == FRONT_MATTER_KEYS, path
 
 
@@ -111,10 +114,12 @@ def test_an_archived_document_is_historical() -> None:
     """`SourceTrust` enforces this too. Kept explicit because it is the whole
     reason the archived returns policy can sit in context without being cited
     as current."""
-    for path in _markdown_docs():
-        meta = _front_matter(path)
-        if meta["status"] == "archived":
-            assert meta["authority"] == "historical", path
+    docs = _markdown_docs()
+    assert docs, "no markdown docs found — this loop would otherwise pass on nothing"
+    archived = [p for p in docs if _front_matter(p)["status"] == "archived"]
+    assert archived, "no archived document found — this test would otherwise prove nothing"
+    for path in archived:
+        assert _front_matter(path)["authority"] == "historical", path
 
 
 def test_every_document_carries_its_assigned_trust_labels() -> None:
@@ -150,6 +155,15 @@ def test_products_json_validates_and_lists_at_least_fourteen_products() -> None:
     }
 
 
+def test_a_duplicate_product_id_is_rejected() -> None:
+    """`ProductCatalog._product_ids_are_unique` has no other test — the real
+    `products.json` has no duplicate to exercise the rejection path with."""
+    raw = _catalog().model_dump()
+    raw["products"].append(raw["products"][0])
+    with pytest.raises(ValidationError, match=raw["products"][0]["id"]):
+        ProductCatalog(**raw)
+
+
 # --------------------------------------------------------------------------
 # 5 — the three deliberate defects. See data/FIXTURES.md.
 # --------------------------------------------------------------------------
@@ -162,7 +176,7 @@ def test_the_stale_returns_window_appears_only_in_the_archived_policy() -> None:
     unable to distinguish a stale answer from a correct one."""
     assert "14 day" in ARCHIVED_RETURNS.read_text(encoding="utf-8")
 
-    stale = re.compile(r"14[\s-]day", re.IGNORECASE)
+    stale = re.compile(r"\b14[\s-]day", re.IGNORECASE)
     for path in sorted(CORPUS.rglob("*")):
         if path.is_dir() or path == ARCHIVED_RETURNS:
             continue

@@ -62,8 +62,8 @@ bands do not overlap, and running a compromise temperature stresses both.
   interior height of 24 inches and at least two full-height climbing routes. A
   40-gallon tank laid on its long side does not satisfy this.
 - **Sablewing anole** — 18 gallons vertical for one adult. Sablewing anoles are
-  territorial past six months and are housed singly unless the enclosure
-  exceeds 40 gallons with visual breaks.
+  territorial past six months and are housed singly regardless of enclosure
+  size.
 
 ## Burrowing small mammals
 
