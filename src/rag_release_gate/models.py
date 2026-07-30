@@ -77,6 +77,30 @@ class Product(_Base):
     safety_notes: str | None
 
 
+class ProductCatalog(CorpusDoc):
+    """`products.json` — the same trust block every markdown doc carries in its
+    front-matter, here as the top-level object, with the products beneath it.
+
+    Read it with `model_validate_json`, not `json.loads` + `model_validate`:
+    strict Python mode rejects a string for `effective_date`, strict JSON mode
+    accepts it. See this module's docstring.
+    """
+
+    products: list[Product]
+
+    @model_validator(mode="after")
+    def _product_ids_are_unique(self) -> ProductCatalog:
+        seen: set[str] = set()
+        for product in self.products:
+            if product.id in seen:
+                raise ValueError(
+                    f"duplicate product id {product.id!r}: a citation to it would "
+                    f"resolve to two different products"
+                )
+            seen.add(product.id)
+        return self
+
+
 class Chunk(SourceTrust):
     chunk_id: str
     doc_id: str
