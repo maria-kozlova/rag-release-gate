@@ -1,0 +1,37 @@
+# THE RELEASE GATE — live, costs money, requires OPENROUTER_API_KEY.
+#
+# PLACEHOLDER. Built for real in T19. It is committed empty-of-behaviour now so
+# the security shape is fixed before any secret is ever wired in.
+#
+# Non-negotiable constraints, restated here because this is the file where
+# getting it wrong is expensive:
+#
+#   * NEVER `pull_request` or `pull_request_target` as a trigger.
+#   * NEVER check out `refs/pull/*`, or any ref taken from `github.event`.
+#   * An external fork's code is never executed in a job that can read the key.
+#     A fork contribution earns a live run by BECOMING upstream code — a
+#     maintainer brings the commits onto an upstream branch — not by a
+#     privileged job being pointed at the fork. Diff review is not the control.
+#
+# T19 adds: the `live-eval` GitHub Environment, the missing-key guard
+# (hard-fail on workflow_dispatch, neutral skip on schedule/push), ingest ->
+# evaluate --scope full --max-cost-usd 0.50 -> pytest -m live, the scorecard in
+# GITHUB_STEP_SUMMARY, artifact upload, and INFRA_FAILURE reporting.
+
+name: release gate (live)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  placeholder:
+    name: not yet implemented (T19)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain
+        run: |
+          echo "The live release gate is implemented in T19."
+          echo "No secret is referenced by this workflow yet."

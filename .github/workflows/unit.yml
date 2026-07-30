@@ -1,0 +1,37 @@
+# Unit checks — NOT the release gate.
+#
+# This workflow runs external fork code. It therefore references NO SECRETS:
+# not in `env:`, not in `with:`, not in any action it calls. That is the control.
+# There is nothing here to steal, which is why it is safe to run untrusted code.
+#
+# The live gate lives in release-gate.yml and never runs on pull_request.
+
+name: unit checks (not the release gate)
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit checks (not the release gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install the locked environment
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Unit checks (no key, no network)
+        run: uv run pytest -m "not live"
