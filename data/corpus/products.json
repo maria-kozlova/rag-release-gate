@@ -1,0 +1,149 @@
+{
+  "doc_id": "products",
+  "document_type": "product_catalog",
+  "status": "active",
+  "effective_date": "2026-06-01",
+  "authority": "authoritative",
+  "products": [
+    {
+      "id": "AQ-101",
+      "name": "Tidepool 20 Coldwater Starter Tank",
+      "category": "aquatics",
+      "price_usd": 214.0,
+      "stock": 9,
+      "min_tank_size_gal": 20,
+      "care_level": "beginner",
+      "safety_notes": "Sized for a single adult Pearl-scale axolotl. Requires a chiller in rooms that exceed 68 F."
+    },
+    {
+      "id": "AQ-114",
+      "name": "Pearl 40 Rimless Tank",
+      "category": "aquatics",
+      "price_usd": 189.0,
+      "stock": 12,
+      "min_tank_size_gal": 40,
+      "care_level": "intermediate",
+      "safety_notes": null
+    },
+    {
+      "id": "AQ-127",
+      "name": "Verdant 55 Planted Aquascape System",
+      "category": "aquatics",
+      "price_usd": 489.0,
+      "stock": 4,
+      "min_tank_size_gal": 55,
+      "care_level": "advanced",
+      "safety_notes": "Stand is rated for filled weight. Do not substitute a shelf; 55 gallons exceeds 500 lb filled."
+    },
+    {
+      "id": "AQ-133",
+      "name": "Moonlace Nano Cube 5",
+      "category": "aquatics",
+      "price_usd": 79.0,
+      "stock": 21,
+      "min_tank_size_gal": 5,
+      "care_level": "beginner",
+      "safety_notes": "Shrimp-safe silicone. Never dose copper-based treatments in this tank."
+    },
+    {
+      "id": "AQ-146",
+      "name": "Halcyon 75 Peninsula Tank",
+      "category": "aquatics",
+      "price_usd": 412.0,
+      "stock": 3,
+      "min_tank_size_gal": 75,
+      "care_level": "advanced",
+      "safety_notes": null
+    },
+    {
+      "id": "RP-208",
+      "name": "Banded Dune Gecko Terrarium 20",
+      "category": "reptiles",
+      "price_usd": 176.0,
+      "stock": 7,
+      "min_tank_size_gal": 20,
+      "care_level": "intermediate",
+      "safety_notes": "Ships with a solid liner. Do not use loose sand for animals under six months."
+    },
+    {
+      "id": "RP-215",
+      "name": "Ashwood Arboreal Enclosure 40",
+      "category": "reptiles",
+      "price_usd": 329.0,
+      "stock": 5,
+      "min_tank_size_gal": 40,
+      "care_level": "advanced",
+      "safety_notes": "Vertical orientation only. Interior height 24 in; laying it on the long side does not meet the tree skink minimum."
+    },
+    {
+      "id": "RP-222",
+      "name": "Sablewing Anole Bioactive Kit",
+      "category": "reptiles",
+      "price_usd": 243.0,
+      "stock": 8,
+      "min_tank_size_gal": 18,
+      "care_level": "intermediate",
+      "safety_notes": "Single occupancy past six months. Sablewing anoles are territorial as adults."
+    },
+    {
+      "id": "SM-304",
+      "name": "Cloudtail Jerboa Deep-Burrow Habitat",
+      "category": "small_mammals",
+      "price_usd": 198.0,
+      "stock": 6,
+      "min_tank_size_gal": null,
+      "care_level": "intermediate",
+      "safety_notes": "Solid floor, 4 sq ft. Fill to 10 in of packable substrate; wire flooring causes sores."
+    },
+    {
+      "id": "SM-311",
+      "name": "Marbled Dormouse Nocturne Cage",
+      "category": "small_mammals",
+      "price_usd": 164.0,
+      "stock": 11,
+      "min_tank_size_gal": null,
+      "care_level": "beginner",
+      "safety_notes": "3 sq ft floor with branch routes. Never offer citrus to dormice."
+    },
+    {
+      "id": "SM-318",
+      "name": "Sootfoot Gerbil Sand Pen",
+      "category": "small_mammals",
+      "price_usd": 92.0,
+      "stock": 14,
+      "min_tank_size_gal": null,
+      "care_level": "beginner",
+      "safety_notes": "Sized for a bonded pair. Sand baths only; water bathing strips the coat oils."
+    },
+    {
+      "id": "AC-402",
+      "name": "Tidepool Sponge Filter 40",
+      "category": "accessories",
+      "price_usd": 34.0,
+      "stock": 30,
+      "min_tank_size_gal": null,
+      "care_level": "beginner",
+      "safety_notes": null
+    },
+    {
+      "id": "AC-409",
+      "name": "Halcyon Chiller Loop 200",
+      "category": "accessories",
+      "price_usd": 268.0,
+      "stock": 6,
+      "min_tank_size_gal": null,
+      "care_level": "advanced",
+      "safety_notes": "Run on a separate thermostat. Never run dry; the pump seizes within about 90 seconds without flow."
+    },
+    {
+      "id": "AC-416",
+      "name": "Verdant Substrate Cap 9L",
+      "category": "accessories",
+      "price_usd": 41.0,
+      "stock": 25,
+      "min_tank_size_gal": null,
+      "care_level": "beginner",
+      "safety_notes": null
+    }
+  ]
+}
