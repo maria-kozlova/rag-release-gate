@@ -220,3 +220,15 @@ def test_every_document_body_opens_with_a_single_h1(path: Path) -> None:
     h1s = [line for line in body.splitlines() if line.startswith("# ")]
     assert len(h1s) == 1, path
     assert body.lstrip().startswith("# "), path
+
+
+def test_no_two_documents_share_a_title() -> None:
+    """The two returns policies both read "# Returns Policy" until T04 review.
+    T09's sources table resolves citations to titles and shows the archived doc
+    beside the active one — two identical rows make that screen unreadable, and
+    the gate for that screen is that the trust model is *visible* on it."""
+    titles = [
+        frontmatter.loads(p.read_text(encoding="utf-8")).content.lstrip().splitlines()[0]
+        for p in _markdown_docs()
+    ]
+    assert len(titles) == len(set(titles)), f"duplicate title in {sorted(titles)}"

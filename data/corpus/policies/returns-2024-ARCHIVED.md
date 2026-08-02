@@ -6,7 +6,7 @@ effective_date: 2024-03-01
 authority: historical
 ---
 
-# Returns Policy
+# Returns Policy (2024)
 
 This is the returns policy in force for all orders delivered on or after
 March 1, 2024.
